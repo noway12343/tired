@@ -1,4 +1,3 @@
-// pages/api/analyzeJobPost.js
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -6,33 +5,36 @@ export default async function handler(req, res) {
 
   const { jobPostText } = req.body;
 
-  if (!jobPostText) {
-    return res.status(400).json({ error: 'Missing job post text' });
+  if (!jobPostText || typeof jobPostText !== 'string') {
+    return res.status(400).json({ error: 'Missing or invalid job post text' });
   }
 
   try {
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
         model: 'gpt-4',
         messages: [
           {
             role: 'system',
-            content: `You are a job post risk analyzer. Scan any job post for red flags. Use the framework below. For each flag found, output:
+            content: `You are a job post risk analyzer. Use this structure:
 
-1. Red Flag Category
+1. Category
 2. Severity (1–5)
-3. Explanation (why it's a problem)
-4. Trust Score (0–100 for overall post)
+3. Explanation
+4. Trust Score (0–100)
 5. Final Recommendation
 
 Framework:
-${yourRedFlagFrameworkHere}  // Insert all your categories, red flags, academic section, etc.
-`,
+- Compensation Red Flags
+- Language Red Flags
+- Scam Indicators
+- Unrealistic Requirements
+- Academic Bias`,
           },
           {
             role: 'user',
@@ -44,12 +46,18 @@ ${yourRedFlagFrameworkHere}  // Insert all your categories, red flags, academic 
       }),
     });
 
-    const data = await openaiResponse.json();
-    const aiText = data.choices[0]?.message?.content || '';
+    if (!openaiRes.ok) {
+      const errMsg = await openaiRes.text();
+      console.error('OpenAI error:', errMsg);
+      return res.status(500).json({ error: 'OpenAI API failed' });
+    }
 
-    res.status(200).json({ analysis: aiText });
+    const data = await openaiRes.json();
+    const result = data.choices?.[0]?.message?.content || 'No response from AI.';
+
+    return res.status(200).json({ analysis: result });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to analyze job post' });
+    console.error('Server error:', err);
+    return res.status(500).json({ error: 'Server error occurred' });
   }
 }
